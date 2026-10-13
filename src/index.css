@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #0D1117;
+  color: #E6EDF3;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Developer workspace scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #161B22;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #30363D;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484F58;
+}
+
+/* Remove default focus outlines and provide clean accessible outline */
+*:focus-visible {
+  outline: 2px solid #58A6FF;
+  outline-offset: 1px;
+}
+
+/* Monaco Editor active line highlighting for synchronized learning */
+.monaco-sync-active-line {
+  background-color: #1C2128 !important;
+  border-left: 3px solid #58A6FF !important;
+}
+
+/* Monaco Editor active line highlighting for tracer execution */
+.monaco-tracer-active-line {
+  background-color: #23863633 !important;
+  border-left: 3px solid #3FB950 !important;
+}
+
+/* Monaco Editor active line highlighting for error diagnosis */
+.monaco-error-active-line {
+  background-color: #F8514926 !important;
+  border-left: 3px solid #F85149 !important;
+}

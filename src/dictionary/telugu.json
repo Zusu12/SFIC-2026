@@ -1,0 +1,16 @@
+{
+  "if": "oka vela",
+  "else": "lekapothe",
+  "elif": "lekapothe oka vela ayithe",
+  "for": "prathi daniki",
+  "while": "varaku",
+  "print": "chupinchu",
+  "input": "adugu",
+  "def": "nirvachinchu",
+  "return": "tirigi ivvu",
+  "in": "lo",
+  "and": "mariyu",
+  "or": "leda",
+  "True": "Nijam",
+  "False": "Abaddham"
+}
