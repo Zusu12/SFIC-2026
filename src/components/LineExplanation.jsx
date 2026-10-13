@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, Terminal, HelpCircle, Layers } from 'lucide-react';
 import { getLineDetails, getDeterministicLineExplanation } from '../utils/lineMapper.js';
 import { explainLineWithGemini, getActiveApiKey } from '../services/gemini.js';
+import { getExplanationCache } from '../utils/storage.js';
 
 export function LineExplanation({
   selectedLine = 1,
@@ -20,11 +21,33 @@ export function LineExplanation({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const abortControllerRef = useRef(null);
 
-  // Debounced AI contextual lookup
-  useEffect(() => {
-    setAiExplanation(null);
-    setIsAiLoading(false);
+  // Manual trigger function to fetch immediately without waiting for debounce
+  const triggerAiForLine = useCallback(async () => {
+    const trimmed = (lineDetails.sourceText || '').trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
 
+    const apiKey = getActiveApiKey();
+    if (!apiKey) return;
+
+    setIsAiLoading(true);
+    try {
+      const result = await explainLineWithGemini(
+        sourceCode,
+        selectedLine,
+        lineDetails.sourceText
+      );
+      if (result) {
+        setAiExplanation(result);
+      }
+    } catch (err) {
+      // Local deterministic explanation remains active
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, [lineDetails.sourceText, selectedLine, sourceCode]);
+
+  // Synchronous cache check + 1800ms debounced lookup to protect API quota
+  useEffect(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.aborted = true;
     }
@@ -34,14 +57,29 @@ export function LineExplanation({
 
     const trimmed = (lineDetails.sourceText || '').trim();
     if (!trimmed || trimmed.startsWith('#')) {
+      setAiExplanation(null);
+      setIsAiLoading(false);
       return;
     }
+
+    // 1. Immediate synchronous cache hit (0ms, 0 API tokens consumed)
+    const cached = getExplanationCache(sourceCode, undefined, `line:${selectedLine}`);
+    if (cached) {
+      setAiExplanation(cached);
+      setIsAiLoading(false);
+      return;
+    }
+
+    // Reset AI state so instant deterministic explanation is visible cleanly
+    setAiExplanation(null);
 
     const apiKey = getActiveApiKey();
     if (!apiKey) {
+      setIsAiLoading(false);
       return;
     }
 
+    // 2. Debounce by 1800ms to avoid firing requests on casual cursor navigation
     const timer = setTimeout(async () => {
       if (currentController.aborted) return;
       setIsAiLoading(true);
@@ -62,7 +100,7 @@ export function LineExplanation({
           setIsAiLoading(false);
         }
       }
-    }, 600);
+    }, 1800);
 
     return () => {
       clearTimeout(timer);
@@ -97,7 +135,17 @@ export function LineExplanation({
             <Sparkles className="w-3 h-3 text-[#3FB950]" />
             <span>AI Contextual Active</span>
           </span>
-        ) : !getActiveApiKey() && onOpenApiKey ? (
+        ) : getActiveApiKey() ? (
+          <button
+            type="button"
+            onClick={triggerAiForLine}
+            className="text-[10px] text-[#58A6FF] hover:text-[#79C0FF] hover:underline flex items-center space-x-1 font-mono transition-colors"
+            title="Fetch full AI contextual deep dive for this line immediately"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>AI Deep Dive</span>
+          </button>
+        ) : onOpenApiKey ? (
           <button
             type="button"
             onClick={onOpenApiKey}

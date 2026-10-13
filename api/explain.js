@@ -64,6 +64,7 @@ ${code}`;
           config: {
             temperature: 0.2,
             responseMimeType: 'application/json',
+            maxOutputTokens: 1200,
           },
         });
 

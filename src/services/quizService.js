@@ -1,5 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
-import { getActiveApiKey, PRIMARY_MODEL, FALLBACK_MODELS } from './gemini.js';
+import { executeWithModelFallback } from './gemini.js';
 import { getExplanationCache, saveExplanationCache } from '../utils/storage.js';
 
 /**
@@ -59,13 +58,6 @@ export async function generateQuizWithGemini(originalCode, bypassCache = false) 
     }
   }
 
-  const apiKey = getActiveApiKey();
-  if (!apiKey) {
-    const err = new Error('GEMINI_API_KEY_MISSING');
-    err.code = 'NO_API_KEY';
-    throw err;
-  }
-
   const prompt = `You are a Telugu programming teacher.
 Based STRICTLY on the actual Python code below, generate between 2 to 4 interactive multiple-choice questions to test the student's understanding.
 
@@ -102,44 +94,7 @@ Requirements:
 
 Do not include markdown code fences outside the JSON.`;
 
-  const ai = new GoogleGenAI({ apiKey });
-  const modelsToTry = [PRIMARY_MODEL, ...FALLBACK_MODELS.filter((m) => m !== PRIMARY_MODEL)];
-
-  let lastError = null;
-  let responseText = null;
-
-  for (const modelName of modelsToTry) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          temperature: 0.2,
-          responseMimeType: 'application/json',
-        },
-      });
-
-      responseText = typeof response.text === 'function' ? response.text() : response.text;
-      if (responseText) break;
-    } catch (err) {
-      lastError = err;
-      const errMsg = String(err?.message || '');
-      const errStatus = err?.status || err?.statusCode || 0;
-      if (
-        errStatus === 404 ||
-        errMsg.includes('not found') ||
-        errMsg.includes('NOT_FOUND') ||
-        errMsg.includes('no longer available')
-      ) {
-        continue;
-      }
-      break;
-    }
-  }
-
-  if (!responseText) {
-    throw lastError || new Error('Failed to generate quiz from Gemini.');
-  }
+  const { responseText } = await executeWithModelFallback(prompt, true, 1000);
 
   let cleaned = responseText.trim().replace(/^```json/i, '').replace(/```$/i, '').trim();
   const firstBrace = cleaned.indexOf('{');

@@ -1,7 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { parseGeminiJson, buildPrompt, explainCodeWithGemini } from '../services/gemini.js';
 
 describe('Gemini Service', () => {
+  let store = {};
+  beforeEach(() => {
+    store = {};
+    global.window = {
+      localStorage: {
+        getItem: (key) => store[key] || null,
+        setItem: (key, val) => { store[key] = String(val); },
+        removeItem: (key) => { delete store[key]; },
+        clear: () => { store = {}; },
+      },
+    };
+  });
   it('builds prompt including original source code', () => {
     const code = 'x = 10\nprint(x)';
     const prompt = buildPrompt(code);
@@ -80,6 +92,56 @@ describe('Gemini Service', () => {
     try {
       // Calling explainCodeWithGemini with bypassCache=true forces fresh request, bypassing cache
       await expect(explainCodeWithGemini('retry_test_code', true)).rejects.toThrow();
+    } finally {
+      import.meta.env.VITE_GEMINI_API_KEY = prevKey;
+    }
+  });
+
+  it('17. returns cached error explanation without network calls when present', async () => {
+    const { explainPythonError } = await import('../services/gemini.js');
+    const { saveExplanationCache } = await import('../utils/storage.js');
+
+    const testCode = 'x = 1 / 0';
+    const subKey = 'err:ZeroDivisionError:1';
+    const mockCached = {
+      errorType: 'ZeroDivisionError',
+      responsibleLine: 1,
+      englishMeaning: 'Cannot divide by zero',
+      meaningTelugu: 'Zero tho divide cheyalemu',
+    };
+    saveExplanationCache(testCode, mockCached, subKey);
+
+    // Even if no API key is present, it returns cached explanation instantly
+    const prevKey = import.meta.env.VITE_GEMINI_API_KEY;
+    import.meta.env.VITE_GEMINI_API_KEY = '';
+    try {
+      const res = await explainPythonError(testCode, { errorType: 'ZeroDivisionError', line: 1, message: 'division by zero' });
+      expect(res.englishMeaning).toBe('Cannot divide by zero');
+      expect(res.meaningTelugu).toBe('Zero tho divide cheyalemu');
+    } finally {
+      import.meta.env.VITE_GEMINI_API_KEY = prevKey;
+    }
+  });
+
+  it('18. returns cached AI tutor hint without network calls when present', async () => {
+    const { getAiTutorHint } = await import('../services/gemini.js');
+    const { saveExplanationCache } = await import('../utils/storage.js');
+
+    const testCode = 'def add(a, b):';
+    const subKey = 'hint:1:simple_telugu';
+    const mockCached = {
+      hintLevel: 1,
+      hintText: 'Return keyword use cheyandi',
+      encouragement: 'Baaga chestunnaru!',
+    };
+    saveExplanationCache(testCode, mockCached, subKey);
+
+    const prevKey = import.meta.env.VITE_GEMINI_API_KEY;
+    import.meta.env.VITE_GEMINI_API_KEY = '';
+    try {
+      const res = await getAiTutorHint(testCode, 1, 'simple_telugu');
+      expect(res.hintText).toBe('Return keyword use cheyandi');
+      expect(res.encouragement).toBe('Baaga chestunnaru!');
     } finally {
       import.meta.env.VITE_GEMINI_API_KEY = prevKey;
     }

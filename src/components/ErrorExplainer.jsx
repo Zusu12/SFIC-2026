@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { analyzePythonCode } from '../services/pythonDiagnostics.js';
 import { explainPythonError, getActiveApiKey } from '../services/gemini.js';
+import { getExplanationCache } from '../utils/storage.js';
 
 export function ErrorExplainer({
   code = '',
@@ -37,50 +38,86 @@ export function ErrorExplainer({
   const [previousCodeBeforeFix, setPreviousCodeBeforeFix] = useState(null);
   const [fixAppliedSuccess, setFixAppliedSuccess] = useState(false);
 
+  const enrichmentTimerRef = useRef(null);
+
   // Run analysis when code changes or when Check Again is clicked
-  const runDiagnostic = useCallback(async (targetCode = code) => {
+  const runDiagnostic = useCallback(async (targetCode = code, isImmediate = false) => {
     setIsAnalyzing(true);
-    setEnrichedExplanation(null);
-    setGeminiNotice(null);
     setIsConfirmingApply(false);
     setFixAppliedSuccess(false);
 
-    // 1. Run real Python diagnostic engine
+    // Cancel any pending debounced Gemini enrichment from prior typing
+    if (enrichmentTimerRef.current) {
+      clearTimeout(enrichmentTimerRef.current);
+      enrichmentTimerRef.current = null;
+    }
+
+    // 1. Run instant local static Python diagnostic engine (0 tokens, 0ms)
     const result = analyzePythonCode(targetCode);
     setDiagnostic(result);
     setIsAnalyzing(false);
 
-    // Highlight the error line in the editor if line number is available
+    // Highlight the error line in editor if available
     if (result.hasError && result.line && onHighlightLine) {
       onHighlightLine(result.line);
     } else if (onHighlightLine) {
       onHighlightLine(null);
     }
 
-    // 2. If an error is detected and Gemini is configured, enrich with Gemini
-    if (result.hasError) {
-      const apiKey = getActiveApiKey();
-      if (apiKey) {
-        setIsGeminiLoading(true);
-        try {
-          const aiRes = await explainPythonError(targetCode, result);
-          setEnrichedExplanation(aiRes);
-        } catch (err) {
-          console.warn('Gemini enrichment notice:', err);
-          setGeminiNotice('Static Python diagnostics active. (AI explanation service unavailable).');
-        } finally {
-          setIsGeminiLoading(false);
-        }
-      } else {
-        setGeminiNotice('Diagnosed via built-in Python static analysis engine.');
+    if (!result.hasError) {
+      setEnrichedExplanation(null);
+      setIsGeminiLoading(false);
+      return;
+    }
+
+    // 2. Error detected: Check persistent cache first (instant, 0 tokens)
+    const subKey = `err:${result.errorType}:${result.line || 0}`;
+    const cached = getExplanationCache(targetCode, undefined, subKey);
+    if (cached) {
+      setEnrichedExplanation(cached);
+      setIsGeminiLoading(false);
+      return;
+    }
+
+    // If no cache, check if Gemini key is available
+    const apiKey = getActiveApiKey();
+    if (!apiKey) {
+      setGeminiNotice('Diagnosed via built-in Python static analysis engine.');
+      setIsGeminiLoading(false);
+      return;
+    }
+
+    const executeEnrichment = async () => {
+      setIsGeminiLoading(true);
+      try {
+        const aiRes = await explainPythonError(targetCode, result);
+        setEnrichedExplanation(aiRes);
+      } catch (err) {
+        console.warn('Gemini enrichment notice:', err);
+        setGeminiNotice('Static Python diagnostics active. (AI explanation service unavailable).');
+      } finally {
+        setIsGeminiLoading(false);
       }
+    };
+
+    if (isImmediate) {
+      // Manual click or instant trigger
+      executeEnrichment();
+    } else {
+      // Debounce by 1500ms during typing so incomplete syntax doesn't drain API limits
+      enrichmentTimerRef.current = setTimeout(executeEnrichment, 1500);
     }
   }, [code, onHighlightLine]);
 
   useEffect(() => {
     if (autoRun && code) {
-      runDiagnostic(code);
+      runDiagnostic(code, false);
     }
+    return () => {
+      if (enrichmentTimerRef.current) {
+        clearTimeout(enrichmentTimerRef.current);
+      }
+    };
   }, [autoRun, code, runDiagnostic]);
 
   // Copy corrected code
@@ -216,7 +253,7 @@ export function ErrorExplainer({
           {/* Check Again Button */}
           <button
             type="button"
-            onClick={() => runDiagnostic(code)}
+            onClick={() => runDiagnostic(code, true)}
             disabled={isAnalyzing}
             className="px-2.5 py-1 rounded border border-[#30363D] bg-[#1C2128] hover:bg-[#30363D]/60 text-[#8B949E] hover:text-[#E6EDF3] transition-colors flex items-center space-x-1"
             title="Re-analyze current editor code"
