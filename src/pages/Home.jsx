@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { AlertCircle, ExternalLink, ArrowRight, FolderOpen, Sparkles, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, ArrowRight, FolderOpen, Sparkles, AlertTriangle } from 'lucide-react';
 import { CodeEditor } from '../components/CodeEditor.jsx';
 import { EditorTabs } from '../components/EditorTabs.jsx';
 import { AiTutorPanel } from '../components/AiTutorPanel.jsx';
@@ -22,11 +23,11 @@ export function Home({
   onToggleAiTutor,
   onOpenApiKey,
 }) {
+  const navigate = useNavigate();
   const [code, setCode] = useState(STARTER_CODE);
   const [cursorPos, setCursorPos] = useState({ lineNumber: 1, column: 1 });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [popupNotice, setPopupNotice] = useState(null);
   const [localTutorOpen, setLocalTutorOpen] = useState(false);
 
   // Explain Python Error state
@@ -74,7 +75,6 @@ export function Home({
 
   const handleTranslate = () => {
     setErrorMessage('');
-    setPopupNotice(null);
 
     // 1. Validate nonempty code
     if (!code || !code.trim()) {
@@ -103,23 +103,13 @@ export function Home({
 
       const targetUrl = `/translate?id=${encodeURIComponent(saveResult.id)}`;
 
-      // 4. Open in new tab synchronously inside click handler
-      const newTab = window.open(targetUrl, '_blank');
-
-      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-        // Pop-up was blocked by browser
-        setPopupNotice({
-          url: targetUrl,
-          message: 'Your browser prevented opening the new tab automatically. Click below to view the translation:',
-        });
-      }
+      // 4. Navigate directly in the same tab using React Router
+      navigate(targetUrl);
     } catch (err) {
       console.error('Translation launch error:', err);
       setErrorMessage('An error occurred while launching the translation workspace.');
     } finally {
-      setTimeout(() => {
-        setIsSubmitting(false);
-      }, 500);
+      setIsSubmitting(false);
     }
   };
 
@@ -230,22 +220,6 @@ export function Home({
         <div className="p-3 rounded-md bg-[#161B22] border border-[#F85149]/40 flex items-center space-x-2 text-xs text-[#F85149]">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {/* Pop-up blocked notice */}
-      {popupNotice && (
-        <div className="p-3 rounded-md bg-[#161B22] border border-[#30363D] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#E6EDF3]">
-          <span>{popupNotice.message}</span>
-          <a
-            href={popupNotice.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center space-x-1 text-[#58A6FF] hover:underline shrink-0"
-          >
-            <span>Open Translation Workspace</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
         </div>
       )}
 
