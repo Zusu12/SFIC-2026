@@ -157,7 +157,6 @@ npm run dev
 ---
 
 ## ☁️ Deploying to Vercel
-
 1. Push this repository to GitHub.
 2. Import the project in the [Vercel Dashboard](https://vercel.com/new).
 3. Framework Preset: **Vite** (auto-detected).
